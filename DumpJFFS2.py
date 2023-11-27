@@ -560,14 +560,10 @@ class JFFS:
 		)
 		
 	def MakeInodeWithHeaderFile(self, header_file, payload_file):
-		fd=open(header_file,'rb')
-		header=fd.read()[0:header_struct_size+inode_struct_size]
-		fd.close()
-
-		fd=open(payload_file,'rb')
-		payload=fd.read()
-		fd.close()
-
+		with open(header_file,'rb') as fd:
+			header = fd.read()[:header_struct_size+inode_struct_size]
+		with open(payload_file,'rb') as fd:
+			payload=fd.read()
 		return self.MakeInodeWithHeader(header,payload)
 
 	def WriteIno(self,ino,target_filename,offset,size,new_data_filename,output_filename):

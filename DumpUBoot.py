@@ -155,9 +155,7 @@ class uImage:
 			return self.IH_OS_STR_RTEMS
 		if os==self.IH_OS_ARTOS:
 			return self.IH_OS_STR_ARTOS
-		if os==self.IH_OS_UNITY:
-			return self.IH_OS_STR_UNITY
-		return ""
+		return self.IH_OS_STR_UNITY if os==self.IH_OS_UNITY else ""
 
 	def GetArchString(self,arch):
 		if arch==self.IH_CPU_INVALID:
@@ -230,10 +228,8 @@ class uImage:
 
 	def ParseFile(self,filename):
 		self.filename=filename
-		fd=open(self.filename,'rb')
-		header=fd.read(0x40)
-		fd.close()
-
+		with open(self.filename,'rb') as fd:
+			header=fd.read(0x40)
 		self.ParseHeader(header)
 
 	def ParseHeader(self,header):
@@ -340,31 +336,25 @@ class uImage:
 				wfd.close()
 
 	def Merge(self, header_file, files, output_filename):
-		fd=open(header_file,'rb')
-		header=fd.read(0x40)
-		fd.close()
+		with open(header_file,'rb') as fd:
+			header=fd.read(0x40)
+		with open(output_filename,'wb') as ofd:
+			ofd.write(header)
+			ofd.write('\x00' * (len(files)+1)*4)
 
-		ofd=open(output_filename,'wb')
-		ofd.write(header)
-		ofd.write('\x00' * (len(files)+1)*4)
+			dcrc=0
+			lengths=[]
+			for file in files:
+				with open(file,'rb') as fd:
+					data=fd.read()
+				ofd.write(data)
 
-		dcrc=0
-		lengths=[]
-		for file in files:
-			fd=open(file,'rb')
-			data=fd.read()
-			fd.close()
+				lengths.append(len(data))
+				dcrc=zlib.crc32(data,dcrc)
 
-			ofd.write(data)
-
-			lengths.append(len(data))
-			dcrc=zlib.crc32(data,dcrc)
-
-		ofd.seek(0x40)
-		for length in lengths:			
-			ofd.write(struct.pack(">L", length))
-		ofd.close()
-
+			ofd.seek(0x40)
+			for length in lengths:			
+				ofd.write(struct.pack(">L", length))
 		self.ParseFile(output_filename)
 		self.FixHeader()
 

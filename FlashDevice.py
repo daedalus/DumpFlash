@@ -187,14 +187,14 @@ class NandIO:
 
 		cmds+=[Ftdi.READ_EXTENDED, cmd_type, 0]
 
-		for i in range(1,count,1):
+		for _ in range(1,count,1):
 			cmds+=[Ftdi.READ_SHORT, 0]
 
 		cmds.append(Ftdi.SEND_IMMEDIATE)
 		self.Ftdi.write_data(Array('B', cmds))
 		if (self.getSlow()):
 			data = self.Ftdi.read_data_bytes(count*2)
-			data = data[0:-1:2]
+			data = data[:-1:2]
 		else:
 			data = self.Ftdi.read_data_bytes(count)
 		return data.tolist()
@@ -222,7 +222,7 @@ class NandIO:
 	def sendAddr(self,addr,count):
 		data=''
 
-		for i in range(0,count,1):
+		for _ in range(0,count,1):
 			data += chr(addr & 0xff)
 			addr=addr>>8
 
@@ -230,8 +230,7 @@ class NandIO:
 
 	def Status(self):
 		self.sendCmd(0x70)
-		status=self.readFlashData(1)[0]
-		return status
+		return self.readFlashData(1)[0]
 
 	def readFlashData(self,count):
 		return self.nandRead(0,0,count)
@@ -488,11 +487,7 @@ class NandIO:
 				self.WaitReady()
 				bytes+=self.readFlashData(self.OOBSize)
 
-		data=''
-
-		for ch in bytes:
-			data+=chr(ch)
-		return data
+		return ''.join(chr(ch) for ch in bytes)
 
 	def ReadSeq(self,pageno,remove_oob=False,raw_mode=False):
 		page=[]
@@ -601,10 +596,8 @@ class NandIO:
 
 	def writeBlock(self,block_data):
 		nand_tool.EraseBlockByPage(0) #need to fix
-		page=0
 		for i in range(0,len(data),self.RawPageSize):
 			nand_tool.WritePage(pageno,data[i:i+self.RawPageSize])
-			page+=1
 
 	def WritePages(self,filename,offset=0,start_page=-1,end_page=-1,add_oob=False,add_jffs2_eraser_marker=False,raw_mode=False):
 		fd=open(filename,'rb')

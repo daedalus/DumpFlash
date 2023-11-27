@@ -93,14 +93,11 @@ class FlashUtil:
 
 		
 	def CheckBadBlockPage(self,oob):
-		bad_block=False
-		
-		if oob[0:3] != '\xff\xff\xff':
-			bad_block=True
-			if oob[0x8:] == '\x85\x19\x03\x20\x08\x00\x00\x00': #JFFS CleanMarker
-				bad_block=False
-
-		return bad_block
+		return (
+			oob[0x8:] != '\x85\x19\x03\x20\x08\x00\x00\x00'
+			if oob[:3] != '\xff\xff\xff'
+			else False
+		)
 
 	CLEAN_BLOCK=0
 	BAD_BLOCK=1
@@ -216,11 +213,7 @@ class FlashUtil:
 
 	def ReadSeqPages(self, start_page=-1, end_page=-1, remove_oob=False, filename='', append=False, maximum=0, raw_mode=False):
 		if filename:
-			if append:
-				fd=open(filename,'ab')
-			else:
-				fd=open(filename,'wb')
-		
+			fd = open(filename,'ab') if append else open(filename,'wb')
 		if start_page==-1:
 			start_page=0
 
@@ -238,13 +231,12 @@ class FlashUtil:
 			data=self.io.ReadSeq(page, remove_oob, raw_mode)
 
 			if filename:
-				if maximum!=0:
-					if length<maximum:
-						fd.write(data[0:maximum-length])
-					else:
-						break
-				else:
+				if maximum == 0:
 					fd.write(data)
+				elif length<maximum:
+					fd.write(data[:maximum-length])
+				else:
+					break
 			else:
 				whole_data+=data
 
@@ -265,38 +257,36 @@ class FlashUtil:
 		if filename:
 			fd.close()
 
-		if maximum!=0:
-			return whole_data[0:maximum]
-		return whole_data
+		return whole_data[:maximum] if maximum!=0 else whole_data
 
 	def AddOOB(self,filename, output_filename, jffs2=False):
-		fd=open(filename,'rb')
-		wfd=open(output_filename,"wb")
+		with open(filename,'rb') as fd:
+			wfd=open(output_filename,"wb")
 
-		current_block_number=0
-		current_output_size=0
-		ecc=ECC()
-		while 1:
-			page=fd.read(self.io.PageSize)
+			current_block_number=0
+			current_output_size=0
+			ecc=ECC()
+			while 1:
+				page=fd.read(self.io.PageSize)
 
-			if not page:
-				break
+				if not page:
+					break
 
-			(ecc0, ecc1, ecc2) = ecc.CalcECC(page)
+				(ecc0, ecc1, ecc2) = ecc.CalcECC(page)
 
-			oob_postfix='\xFF' * 13
+				oob_postfix='\xFF' * 13
 
-			if current_output_size% self.io.BlockSize==0:
-				if jffs2 and current_block_number%2==0:
-					oob_postfix="\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00"
-				current_block_number+=1
+				if current_output_size% self.io.BlockSize==0:
+					if jffs2 and current_block_number%2==0:
+						oob_postfix="\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00"
+					current_block_number+=1
 
-			data=page + struct.pack('BBB',ecc0,ecc1,ecc2) + oob_postfix
-			wfd.write(data)
-			current_output_size += len(data)
+				data=page + struct.pack('BBB',ecc0,ecc1,ecc2) + oob_postfix
+				wfd.write(data)
+				current_output_size += len(data)
 
-		#Write blank pages
-		"""
+			#Write blank pages
+			"""
 		while size>current_output_size:
 			if current_output_size% self.RawBlockSize==0:
 				wfd.write("\xff"*0x200+ "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00")
@@ -305,7 +295,6 @@ class FlashUtil:
 			current_output_size+=0x210
 		"""
 
-		fd.close()
 		wfd.close()
 
 	def CopyPages(self, output_filename, start_page=0, end_page=-1, remove_oob = True):
@@ -385,7 +374,7 @@ class FlashUtil:
 		expected_data_length=0
 		block=start_block
 		blocks=[]
-		for start_page in range(start_block*self.io.PagePerBlock,self.io.PageCount,self.io.PagePerBlock):
+		for start_page in range(block * self.io.PagePerBlock, self.io.PageCount, self.io.PagePerBlock):
 			is_bad_block=False
 			for pageoff in range(0,2,1):
 				oob=self.io.ReadOOB(start_page+pageoff)
@@ -393,15 +382,13 @@ class FlashUtil:
 				if oob and oob[5]!='\xff':
 					is_bad_block=True
 					break
-			
+
 			if not is_bad_Block:
-				if start_page <= start_page and start_page <= start_page+self.io.PagePerBlock: #First block
+				if start_page <= start_page <= start_page + self.io.PagePerBlock: #First block
 					expected_data_length += (self.io.PagePerBlock-start_block_page) * self.io.PageSize
-					blocks.append(block)
 				else:
 					expected_data_length += self.io.PagePerBlock * self.io.PageSize
-					blocks.append(block)
-
+				blocks.append(block)
 			if expected_data_length>=length:
 				break
 			block+=1
@@ -426,7 +413,7 @@ class FlashUtil:
 			append=True
 
 		self.DumpProgress=True
-		return data[0:length]
+		return data[:length]
 
 
 	def FindUBootImages(self):
@@ -481,17 +468,20 @@ class FlashUtil:
 				uimage.Extract()
 
 	def IsJFFS2Block(self,block):
-		ret = self.CheckBadBlock(block) 
+		ret = self.CheckBadBlock(block)
 		if ret == self.CLEAN_BLOCK:
 			page=0
 			block_offset = (block * self.RawBlockSize ) + (page * self.RawPageSize)
 			self.fd.seek( block_offset + self.PageSize)
 			oob = self.fd.read(16)
-	
+
 			if not oob:
 				return 0
 
-			if oob[8:] == '\x85\x19\x03\x20\x08\x00\x00\x00' and oob[0:3]!='\xff\xff\xff':
+			if (
+				oob[8:] == '\x85\x19\x03\x20\x08\x00\x00\x00'
+				and oob[:3] != '\xff\xff\xff'
+			):
 				return 2
 
 		elif ret == self.ERROR:
